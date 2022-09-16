@@ -1,10 +1,13 @@
 import matplotlib.pyplot as plt
 import numpy as np
+import random
+random.seed(10)
 from random import random
 from numba import jit
 from sympy import *
 from zope.interface import *
 from typing import Tuple, Callable, NewType, Optional
+from tqdm import tqdm
 
 # Utility funcs
 def euler(y_0, deriv, x_range, step=0.001):
@@ -53,34 +56,44 @@ class LipschitzAndPray():
 @implementer(BobStrat)
 class Analytic():
     def round2(a,b,c,p1,p2):    
-        f = lambda x: 0    
-        eq = Eq(Derivative(y(x), x), (x-l*y(x)/(a+b*x+c)))
-        print(latex(dsolve(eq)))
+        f = lambda x: 0
+        y = Function("y")
+        sa,sb,sc,sl,sx = symbols("a b c l x")
+        eq = Eq(Derivative(y(sx), sx), (-sl*y(sx)/(sa)))
+        sol = dsolve(eq)
+        sol = sol.subs({sa:a, sb:b, sc:c, sl:l, Symbol("C1"):1})
+        return f, lambda x: sol.subs(sx, x).rhs         
         
 # verifying code
 
 def verify_diffeq(y, deriv):
-    h = 0.00001
-    for x in np.arange(-100, 100): # FIXME, super naive
-        if (y(x+h) - y(x))/h != deriv(x,y):
+    h = 0.0001
+    for x in np.arange(0, 1, 0.01): # FIXME, super naive        
+        if abs((y(x+h) - y(x))/h - deriv(x,y)) > 0.01:
+            # print(x, y(x), (y(x+h) - y(x))/h, deriv(x,y))            
             return False
     return True
 
-alice = LipschitzAndPray()
-bob = Analytic()
+alice = LipschitzAndPray
+bob = Analytic
 
-num_games = 10
+num_games = 100
 bob_wins = [True] * num_games
-for i in range(num_games):
+for i in tqdm(range(num_games)):
     a,b,c,p1,p2 = alice.round1()
-    f, y = bob.round2()
+    f, y = bob.round2(a,b,c,p1,p2)
 
-    deriv = lambda x,y: (f(x)-l*y(x))/(a+b*x+c**2)
-    if verify_diffeq(y, deriv):    
+    # xs = np.arange(-100, 100)    
+    # plt.plot(xs, list(map(y, xs)))
+    # plt.show()
+    
+    deriv = lambda x,y: (f(x)-l*y(x))/(a)
+    if y is not None and verify_diffeq(y, deriv):    
         y2 = alice.round3(f)        
-        if verify_diffeq(y2, deriv):
+        if y2 is not None and verify_diffeq(y2, deriv):
             bob_wins[i] = False
     else:
         bob_wins[i] = False
 
-print(bob_wins)
+
+print(f"Bob wins {bob_wins.count(True)/num_games * 100}% of the time!")
