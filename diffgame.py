@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import random
+import math
 random.seed(10)
 from random import random
 from numba import jit
@@ -8,13 +9,14 @@ from sympy import *
 from zope.interface import *
 from typing import Tuple, Callable, NewType, Optional
 from tqdm import tqdm
+from enum import Enum
 
 # Utility funcs
 def euler(y_0, deriv, x_range, step=0.001):
     eps = 1e-3
     ys = [y_0]
     xs = [x_range[0]]
-    # print(xs, l, f(xs[-1]), l*ys[-1])
+    # print(xs, l, f(xs[-1]), l*ys[-1])    
     for i in range(int((x_range[1] - x_range[0])/step)):
         # if abs(ys[-1]) == 0: continue
         ys.append(ys[-1] + deriv(xs[-1],ys[-1])*step)
@@ -46,54 +48,78 @@ class BobStrat(Interface):
 class LipschitzAndPray():    
     def round1():
         """Hope that y(x) is not Lipschitz continuous at 0."""
-        return random(), 0, 0, (0, random()), (0, random())
+        return 0, random(), 0, (0, random()), (0, random())
 
     def round3(f):
         """Pray it doesn't get this far - if it does, give up."""
         return None
 
+@implementer(AliceStrat)
+class Random():    
+    def round1():
+        return random(), random(), random(), (random(), random()), (random(), random())
 
+    def round3(f):
+        return None
+
+# import traceback
 @implementer(BobStrat)
 class Analytic():
-    def round2(a,b,c,p1,p2):    
-        f = lambda x: 0
-        y = Function("y")
-        sa,sb,sc,sl,sx = symbols("a b c l x")
-        eq = Eq(Derivative(y(sx), sx), (-sl*y(sx)/(sa)))
-        sol = dsolve(eq)
-        sol = sol.subs({sa:a, sb:b, sc:c, sl:l, Symbol("C1"):1})
-        return f, lambda x: sol.subs(sx, x).rhs         
+    def round2(a,b,c,p1,p2):
+        try: 
+            scary_term = lambda x: math.exp(-(2*l*math.atan((b+2*c*x)/math.sqrt(4*a*c - b**2)))/math.sqrt(4*a*c - b**2))
+            k = p1[1]/scary_term(p1[0])
+            return lambda x: 0, lambda x: k * scary_term(x)
+        except:
+            #traceback.print_exc()
+            #print(a,b,c,l,p1[0])
+            return None
         
 # verifying code
 
-def verify_diffeq(y, deriv):
+def verify_diffeq(y, deriv, p1, p2):
+    # verify it satisfies the diffeq
     h = 0.0001
     for x in np.arange(0, 1, 0.01): # FIXME, super naive        
         if abs((y(x+h) - y(x))/h - deriv(x,y)) > 0.01:
-            # print(x, y(x), (y(x+h) - y(x))/h, deriv(x,y))            
-            return False
-    return True
+            # print(x, y(x), (y(x+h) - y(x))/h, deriv(x,y))
+            return None
 
-alice = LipschitzAndPray
+    return (y(p1[0]) == p1[1], y(p2[0]) == p2[1])    
+    
+class Result(Enum):
+    WIN = 1,
+    GIVEUP = 2,    
+    NO_POINT = 3,
+    INVALID_EQ = 4,
+    ALICE_WIN = 5,
+
+alice = Random
 bob = Analytic
 
 num_games = 100
-bob_wins = [True] * num_games
+bob_wins = [Result.WIN] * num_games
 for i in tqdm(range(num_games)):
     a,b,c,p1,p2 = alice.round1()
-    f, y = bob.round2(a,b,c,p1,p2)
-
+    bob_choice = bob.round2(a,b,c,p1,p2)
+    if bob_choice == None:
+        bob_wins[i] = Result.GIVEUP
+        continue
+    f, y = bob_choice
     # xs = np.arange(-100, 100)    
     # plt.plot(xs, list(map(y, xs)))
     # plt.show()
     
-    deriv = lambda x,y: (f(x)-l*y(x))/(a)
-    if y is not None and verify_diffeq(y, deriv):    
+    deriv = lambda x,y: (f(x)-l*y(x))/(a+b*x+c*x**2)
+    pts = verify_diffeq(y, deriv, p1, p2)
+    if pts == None:
+        bob_wins[i] = Result.INVALID_EQ
+    elif True in pts:    
         y2 = alice.round3(f)        
-        if y2 is not None and verify_diffeq(y2, deriv):
-            bob_wins[i] = False
+        if y2 is not None and verify_diffeq(y2, deriv, p1, p2):
+            bob_wins[i] = Result.ALICE_WIN
     else:
-        bob_wins[i] = False
+        bob_wins[i] = Result.NO_POINT
 
 
-print(f"Bob wins {bob_wins.count(True)/num_games * 100}% of the time!")
+print(f"Bob wins {bob_wins.count(Result.WIN)/num_games * 100}% of the time!")
