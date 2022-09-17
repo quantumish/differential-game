@@ -1,16 +1,15 @@
 import matplotlib.pyplot as plt
 import numpy as np
-import random
+from random import *
 import math
-
-random.seed(10)
-from random import random
+seed(10)
 from numba import jit
 from sympy import *
 from zope.interface import *
 from typing import Tuple, Callable, NewType, Optional
 from tqdm import tqdm
 from enum import Enum
+from matplotlib.animation import FuncAnimation
 import sys
 
 # Utility funcs
@@ -64,13 +63,26 @@ class LipschitzAndPray:
         """Pray it doesn't get this far - if it does, give up."""
         return None
 
+
 @implementer(AliceStrat)
-class Roots:
-    def round1():        
-        return 4, -4, 1, (1, 4), (3, 4)
+class NaiveRoots:
+    def round1():
+        root = random()
+        b, a = uniform(0, root), uniform(root, 1)
+        return root**2, -2*root, 1, (b, random()), (a, random())
 
     def round3(f):
-        """Pray it doesn't get this far - if it does, give up."""
+        return None
+
+@implementer(AliceStrat)
+class Roots:
+    def round1():
+        root1, root2 = random(), random()
+        while root1 == root2: # reinit if unlucky
+            root1, root2 = random(), random()            
+        return root1*root2, -(root1+root2), 1, (root1, random()), (root2, random())
+
+    def round3(f):
         return None
 
 
@@ -82,13 +94,10 @@ class Random:
     def round3(f):
         return None
 
-# @implementer(AliceStrat)
-# class Discontinuity
-    
 @implementer(AliceStrat)
 class Rude:
     """Be mean."""
-    
+
     def round1():
         big = sys.float_info.max
         return big, big, big, (big, big), (big, big)
@@ -97,7 +106,6 @@ class Rude:
         return sys.float_info.min
 
 
-# import traceback
 @implementer(BobStrat)
 class PrecomputedAnalyticZero:
     """Assumes a,b,c are nonzero and picks f(x) = 0 to make things simple.
@@ -112,8 +120,6 @@ class PrecomputedAnalyticZero:
             k = p1[1] / scary_term(p1[0])
             return lambda x: 0, lambda x: k * scary_term(x)
         except:
-            # traceback.print_exc()
-            # print(a,b,c,l,p1[0])
             return None
 
 
@@ -122,7 +128,7 @@ class Analytic:
     """Uses SymPy to solve the differential equation."""
     def __init__(self, f):
         self.f = f
-    
+
     def round2(self, a, b, c, p1, p2):
         y = Function("y")
         sa, sb, sc, sl, sx = symbols("a b c l x")
@@ -138,32 +144,31 @@ class Analytic:
 class Euler:
     def __init__(self, f):
         self.f = f
-    
+
     """Approximates a solution numerically using Euler's method."""
     def round2(self,a,b,c,p1,p2):
-        try: 
-            deriv = lambda x, y: (self.f(x) - l * y) / (a + b * x + c * x**2)    
+        try:
+            deriv = lambda x, y: (self.f(x) - l * y) / (a + b * x + c * x**2)
             xs, ys = euler(p1[1], deriv, (p1[0], 1))
         except:
             return None
 
         # print(ys)
         def near_analytic(x):
-            for i in range(len(xs))[:-1]:                
+            for i in range(len(xs))[:-1]:
                 if x >= xs[i] and x < xs[i+1]:
-                    return ys[i]            
+                    return ys[i]
             return np.nan
-        
+
         return self.f, near_analytic
 
 # verifying code
-
 
 def verify_diffeq(y, deriv, p1, p2):
     """Verifies a potential solution.
     - Checks that it satisfies the differential equation
     - Checks that it passes through at least one of the points
-    """    
+    """
     # verify it satisfies the diffeq
     h = 0.001
     for x in np.arange(p1[0], p2[0], 0.01): # FIXME, super naive
@@ -174,15 +179,6 @@ def verify_diffeq(y, deriv, p1, p2):
     epsilon = 0.001
     return (abs(y(p1[0])-p1[1]) < epsilon, abs(y(p2[0]) - p2[1]) < epsilon)
 
-
-def plot_sol_and_pts(y, p1, p2):
-    xs = np.arange(-.1, 10, 0.01)    
-    plt.plot(xs, list(map(y, xs)))
-    plt.scatter([p1[0], p2[0]], [p1[1], p2[1]])
-    # plt.xlim(-.1, 1.1)
-    plt.show()
-
-
 class Result(Enum):
     WIN = (1,)
     GIVEUP = (2,)
@@ -190,50 +186,66 @@ class Result(Enum):
     INVALID_EQ = (4,)
     ALICE_WIN = (5,)
 
+    def __str__(self):
+        return self.name
 
-alice = Roots
-s_x = Symbol("x")
-bob = Analytic(0) # Euler(lambda x: 0)
+alice = Random
+bob = Euler(lambda x: 0)
+    
 
-num_games = 100
-bob_wins = [Result.WIN] * num_games
-for i in tqdm(range(num_games)):
+fig = plt.figure()
+ax = plt.axes()
+ax.set_title("Random (Alice) vs. Euler0 (Bob)")
+ax.set_xlim(-.1, 1.1)
+ax.set_ylim(-.1, 1.1)
+line, = ax.plot([], [], lw=2)
+scatter = ax.scatter([], [])
+res_text = ax.text(0.05, 0.9, '', transform=ax.transAxes)
+stats_text = ax.text(0.05, 0.05, '', transform=ax.transAxes)
+results = []
+
+def play_game(i):
     a, b, c, p1, p2 = alice.round1()
     if p1[0] <= 0 or p1[1] <= 0 or p2[0] <= 0 or p2[1] <= 0:
-        continue
-    
+        return # TODO make less bad
+    scatter.set_offsets([p1, p2])
+
     bob_choice = bob.round2(a, b, c, p1, p2)
-    if bob_choice == None:
-        bob_wins[i] = Result.GIVEUP
-        continue
-    f, y = bob_choice
+    if bob_choice != None:        
+        f, y = bob_choice
 
-    deriv = lambda x, y: (f(x) - l * y(x)) / (a + b * x + c * x**2)
-    pts = verify_diffeq(y, deriv, p1, p2)    
-    if pts is None:
-        bob_wins[i] = Result.INVALID_EQ
-        try:
-            plot_sol_and_pts(y, p1, p2)            
-        except:
-            print("complex valued!!!")
-            pass
+        result = Result.WIN
 
-    # TODO implement forcing Alice to go through the same points as Bob
-    elif True in pts:
-        y2 = alice.round3(f)
-        if y2 is not None and verify_diffeq(y2, deriv, p1, p2):
-            bob_wins[i] = Result.ALICE_WIN
+        xs = np.arange(0, 1, 0.01)
+        line.set_data(xs, list(map(y, xs)))        
+        deriv = lambda x, y: (f(x) - l * y(x)) / (a + b * x + c * x**2)    
+        pts = verify_diffeq(y, deriv, p1, p2)    
+        if pts is not None:
+            # TODO implement forcing Alice to go through the same points as Bob
+            if True in pts:
+                y2 = alice.round3(f)
+                if y2 is not None and verify_diffeq(y2, deriv, p1, p2):
+                    result = Result.ALICE_WIN
+            else:
+                result = Result.NO_POINT
+        else:
+            result = Result.INVALID_EQ
     else:
-        bob_wins[i] = Result.NO_POINT
-        # try:
-        #     plot_sol_and_pts(y, p1, p2)
-        # except:
-        #     print("complex valued!!!")
-        #     pass
+        result = Result.GIVEUP
+        
+    results.append(result)
+    res_text.set_text(str(result))
+    res_text.set_c("g" if str(result) == "WIN" else "r")
 
+    wins = round(results.count(Result.WIN)/len(results) * 100, 2)
+    no_points = round(results.count(Result.NO_POINT)/len(results) * 100, 2)
+    giveups = round(results.count(Result.GIVEUP)/len(results) * 100, 2)
+    invalid_eqs = round(results.count(Result.INVALID_EQ)/len(results) * 100, 2)
+    alice_wins = round(results.count(Result.ALICE_WIN)/len(results) * 100, 2)
+    
+    stats_text.set_text(f"WIN {wins}%\nNO_POINT {no_points}%\nGIVEUP {giveups}%\nINVALID_EQ {invalid_eqs}%\nALICE_WIN {alice_wins}%")
+    
+    return [line, scatter, res_text, stats_text]
 
-print(f"Bob wins {bob_wins.count(Result.WIN)/num_games * 100}% of the time!")
-print(f"   - lost to points {bob_wins.count(Result.NO_POINT)/num_games * 100}% of the time!")
-print(f"   - lost to giveup {bob_wins.count(Result.GIVEUP)/num_games * 100}% of the time!")
-print(f"   - lost to invalid {bob_wins.count(Result.INVALID_EQ)/num_games * 100}% of the time!")
-print(f"   - lost to alice {bob_wins.count(Result.ALICE_WIN)/num_games * 100}% of the time!")
+anim = FuncAnimation(fig, play_game, frames=200, interval=20, blit=True)
+anim.save("./demo.gif")
