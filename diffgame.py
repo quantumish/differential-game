@@ -212,11 +212,11 @@ for i in tqdm(range(num_games)):
     pts = verify_diffeq(y, deriv, p1, p2)    
     if pts is None:
         bob_wins[i] = Result.INVALID_EQ
-        try:
-            plot_sol_and_pts(y, p1, p2)            
-        except:
-            print("complex valued!!!")
-            pass
+        # try:
+        #     plot_sol_and_pts(y, p1, p2)
+        # except:
+        #     print("complex valued!!!")
+        #     pass
 
     # TODO implement forcing Alice to go through the same points as Bob
     elif True in pts:

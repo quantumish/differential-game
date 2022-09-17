@@ -43,3 +43,6 @@ Thus, we can simply choose $L = \left|\frac\lambda\alpha\right|$ as an upper bou
 ## 3. TBD
 
 ## 4. TBD
+
+# Geogebra
+We've created a Geogebra plot to help visualize the game. You can find it [here](https://www.geogebra.org/calculator/yvj7xen2).
