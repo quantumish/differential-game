@@ -189,13 +189,13 @@ class Result(Enum):
     def __str__(self):
         return self.name
 
-alice = Random
-bob = Euler(lambda x: 0)
+alice = Roots
+bob = Analytic(0) #Euler(lambda x: 0)
     
 
 fig = plt.figure()
 ax = plt.axes()
-ax.set_title("Random (Alice) vs. Euler0 (Bob)")
+ax.set_title("NaiveRoots (Alice) vs. Analytic0 (Bob)")
 ax.set_xlim(-.1, 1.1)
 ax.set_ylim(-.1, 1.1)
 line, = ax.plot([], [], lw=2)
@@ -217,9 +217,19 @@ def play_game(i):
         result = Result.WIN
 
         xs = np.arange(0, 1, 0.01)
-        line.set_data(xs, list(map(y, xs)))        
+        ys = list(map(y, xs))
         deriv = lambda x, y: (f(x) - l * y(x)) / (a + b * x + c * x**2)    
-        pts = verify_diffeq(y, deriv, p1, p2)    
+        pts = verify_diffeq(y, deriv, p1, p2)
+
+        # this is so hacky
+        # for i in ys:
+        #     if i.is_real is None:
+        #         result = Result.GIVEUP
+        #         pts = None
+        #         line.set_data([], [])
+        #         break
+        # else:
+        line.set_data(xs, ys)            
         if pts is not None:
             # TODO implement forcing Alice to go through the same points as Bob
             if True in pts:
@@ -247,5 +257,5 @@ def play_game(i):
     
     return [line, scatter, res_text, stats_text]
 
-anim = FuncAnimation(fig, play_game, frames=200, interval=20, blit=True)
-anim.save("./demo.gif")
+anim = FuncAnimation(fig, play_game, frames=20, interval=20, blit=True)
+anim.save("./roots_vs_euler.gif")
